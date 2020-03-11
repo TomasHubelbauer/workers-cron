@@ -19,6 +19,7 @@ addEventListener('fetch', event => {
 
 async function handleRequest(request) {
   await KV.put('hits', Number(await KV.get('hits')) + 1);
+  //fetch('https://test.tomashubelbauer.workers.dev');
   return new Response(await KV.get('hits'));
 }
 
@@ -30,7 +31,5 @@ async function issueAnotherRequest() {
 ```
 
 ## To-Do
-
-### Try calling self in self but not awaiting it (fire and forget)
 
 ### Try ping-pong calling two workers
