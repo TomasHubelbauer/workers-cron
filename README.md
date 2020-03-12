@@ -25,6 +25,8 @@ The limits concerns and pricing concerns are cleared as per the following:
   - The cost of running a worker as a cron is negligible
   - The strain on the Workers infrastructure by doing this is negligible
 
+This worker is used to test which delays work and which don't:
+
 ```javascript
 addEventListener('fetch', event => event.respondWith(handleRequest(event)));
 
@@ -95,3 +97,64 @@ async function issueMarkHitRequest({ hit, delay }) {
   return response.text();
 }
 ```
+
+This worker _should_ be implementing the event loop, but doesn't work:
+
+```javascript
+addEventListener('fetch', event => event.respondWith(handleRequest(event)));
+
+const delay = 5000;
+
+async function handleRequest(event) {
+  try {
+    const isScheduled = event.request.headers.get('X-Scheduled-Call') === 'true';
+
+    // Ensure a valid array in case of an empty KV
+    let hitsValue = await KV.get('hits');
+    if (!hitsValue) {
+      hitsValue = '[]';
+      await KV.put('hits', hitsValue);
+    }
+
+    const hits = JSON.parse(hitsValue);
+    const hit = {
+      stamp: new Date().toISOString(),
+      mode: isScheduled ? 'scheduled' : 'direct'
+    };
+
+    hits.unshift(hit);
+    await KV.put('hits', JSON.stringify(hits));
+
+    const scheduledHit = new Date(await KV.get('scheduled-hit'));
+    const brokenLoop = (new Date().getTime() - scheduledHit.getTime()) > delay + 1000;
+
+    // Schedule a follow-up call if this call is scheduled itself
+    // Schedule a follow-up call if the loop broke (last call older than delay + epsilon)
+    if (isScheduled || brokenLoop) {
+      // Dispatch the fire and forget scheduled call
+      event.waitUntil(reschedule());
+    }
+
+    if (isScheduled) {
+      // Stop execution of the rest of the script (which handles non-scheduled hits)
+      return new Response(undefined);
+    }
+
+    return new Response(JSON.stringify({ count: hits.length, hits }, null, 2));
+  }
+  catch (error) {
+    return new Response(error.message, { status: 500 });
+  }
+}
+
+async function reschedule() {
+  // Delay the execution
+  await new Promise(resolve => setTimeout(resolve, delay));
+  await fetch('https://test.tomashubelbauer.workers.dev', {
+    headers: {
+      'X-Scheduled-Call': 'true'
+    }
+  });
+}
+```
+
