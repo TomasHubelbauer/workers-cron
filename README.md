@@ -158,3 +158,35 @@ async function reschedule() {
 }
 ```
 
+The most barebones version of the above possible doesn't work either:
+
+```javascript
+addEventListener('fetch', event => event.respondWith(handleRequest(event)));
+
+async function handleRequest(event) {
+  const url = new URL(event.request.url);
+  const log = `${new Date().toISOString()} ${url.pathname}\n` + await KV.get('logs');
+  await KV.put('logs', log);
+  event.waitUntil(fetch('https://test.tomashubelbauer.workers.dev/' + Math.random()));
+  return new Response(log);
+}
+```
+
+Direct access will add a log entry and invoke the scheduled access, which itself will
+also add a log entry, but it won't invoke another scheduled access.
+
+It seems that CloudFlare Workers prevents worker invocations from a worker from using
+`waitUntil` (it becomes a no-op). It may be that only the same worker is not allowed,
+or any worker, or any resource of the CloudFlare network.
+
+## To-Do
+
+### Try bounding between two workers to see if it works around the issue
+
+A worker calling itself in `waitUntil` works, but the call from `waitUntil` won't
+result into another self-call, the `waitUntil` then will become a no-op.
+
+Maybe bouncing between two workers (one is the actual worker and the other is the
+"tick" worker) will work. The job worker will initiate by calling the tick worker.
+The tick worker will process the request and will after call the job worker for a
+kick-back. The job worker will and this will repeat forever.
