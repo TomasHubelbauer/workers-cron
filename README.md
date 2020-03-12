@@ -179,14 +179,8 @@ It seems that CloudFlare Workers prevents worker invocations from a worker from 
 `waitUntil` (it becomes a no-op). It may be that only the same worker is not allowed,
 or any worker, or any resource of the CloudFlare network.
 
+Turns out Workers can't call other Workers (or self) in the same zone!
+
+https://community.cloudflare.com/t/issue-with-worker-to-worker-https-request/94472
+
 ## To-Do
-
-### Try bounding between two workers to see if it works around the issue
-
-A worker calling itself in `waitUntil` works, but the call from `waitUntil` won't
-result into another self-call, the `waitUntil` then will become a no-op.
-
-Maybe bouncing between two workers (one is the actual worker and the other is the
-"tick" worker) will work. The job worker will initiate by calling the tick worker.
-The tick worker will process the request and will after call the job worker for a
-kick-back. The job worker will and this will repeat forever.
